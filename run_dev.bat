@@ -1,0 +1,3 @@
+@echo off
+echo Starting Next.js Dev Server (Bypass Mode)...
+node node_modules\next\dist\bin\next dev
