@@ -3,7 +3,6 @@ export const MODELS = {
     BLOCK_ANALYSIS: {
         PRIMARY: 'gemma-3-27b',
         FALLBACK_1: 'gemma-3-12b',
-        FALLBACK_2: 'gemma-3-4b',
     },
     AGGREGATION: {
         DAILY: 'gemma-3-4b',          // User requirement: gemma-3-4b ONLY for daily
@@ -30,4 +29,4 @@ export const STORAGE_KEYS = {
 };
 
 export const DB_NAME = 'messenger-analyst-db';
-export const DB_VERSION = 1;
+export const DB_VERSION = 2;

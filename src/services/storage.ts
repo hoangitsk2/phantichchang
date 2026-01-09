@@ -2,10 +2,13 @@
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
 import { DB_NAME, DB_VERSION } from '@/lib/constants';
 
+export type JobStatus = 'pending' | 'running' | 'completed' | 'failed' | 'retrying';
+
 export interface ApiKey {
     key: string;
     label: string;
     addedAt: number;
+    lastUsedAt?: number;
     usage: {
         [model: string]: {
             requests: number;
@@ -20,10 +23,36 @@ export interface ChatBlock {
     id: string;
     date: string;
     messages: any[];
-    status: 'pending' | 'processing' | 'completed' | 'failed';
+    status: JobStatus;
+    attempts?: number;
+    lastUpdated?: number;
     result?: any;
     error?: string;
     modelUsed?: string;
+    keyUsed?: string;
+}
+
+export interface DailySummary {
+    date: string;
+    status: JobStatus;
+    attempts?: number;
+    lastUpdated?: number;
+    value?: any;
+    error?: string;
+    modelUsed?: string;
+    keyUsed?: string;
+}
+
+export interface PeriodSummary {
+    periodKey: string;
+    periodType: 'weekly' | 'monthly';
+    status: JobStatus;
+    attempts?: number;
+    lastUpdated?: number;
+    value?: any;
+    error?: string;
+    modelUsed?: string;
+    keyUsed?: string;
 }
 
 interface MessengerDB extends DBSchema {
@@ -38,7 +67,11 @@ interface MessengerDB extends DBSchema {
     };
     daily_summaries: {
         key: string;
-        value: any;
+        value: DailySummary;
+    };
+    period_summaries: {
+        key: string;
+        value: PeriodSummary;
     };
 }
 
@@ -59,6 +92,9 @@ export function getDB() {
                 if (!db.objectStoreNames.contains('daily_summaries')) {
                     db.createObjectStore('daily_summaries', { keyPath: 'date' });
                 }
+                if (!db.objectStoreNames.contains('period_summaries')) {
+                    db.createObjectStore('period_summaries', { keyPath: 'periodKey' });
+                }
             },
         });
     }
@@ -72,6 +108,7 @@ export const StorageService = {
             key,
             label,
             addedAt: Date.now(),
+            lastUsedAt: undefined,
             usage: {},
             isActive: true,
         });
@@ -80,6 +117,11 @@ export const StorageService = {
     async getApiKeys() {
         const db = await getDB();
         return db.getAll('api_keys');
+    },
+
+    async removeApiKey(key: string) {
+        const db = await getDB();
+        await db.delete('api_keys', key);
     },
 
     async updateApiKeyUsage(key: string, model: string, tokens: number) {
@@ -101,7 +143,17 @@ export const StorageService = {
         usage.tokens += tokens;
 
         apiKey.usage[model] = usage;
+        apiKey.lastUsedAt = now;
         await db.put('api_keys', apiKey);
+    },
+
+    async resetAnalysisData() {
+        const db = await getDB();
+        await Promise.all([
+            db.clear('chat_blocks'),
+            db.clear('daily_summaries'),
+            db.clear('period_summaries'),
+        ]);
     },
 
     async saveChatBlocks(blocks: ChatBlock[]) {
@@ -111,19 +163,39 @@ export const StorageService = {
         await tx.done;
     },
 
+    async getChatBlocks() {
+        const db = await getDB();
+        return db.getAll('chat_blocks');
+    },
+
     async getBlocksByDate(date: string) {
         const db = await getDB();
         return db.getAllFromIndex('chat_blocks', 'by-date', date);
     },
 
-    async saveDailySummary(date: string, summary: any) {
+    async saveDailySummary(summary: DailySummary) {
         const db = await getDB();
-        await db.put('daily_summaries', { key: date, value: summary });
+        await db.put('daily_summaries', summary);
     },
 
     async getDailySummaries() {
         const db = await getDB();
         return db.getAll('daily_summaries');
+    },
+
+    async getDailySummaryByDate(date: string) {
+        const db = await getDB();
+        return db.get('daily_summaries', date);
+    },
+
+    async savePeriodSummary(summary: PeriodSummary) {
+        const db = await getDB();
+        await db.put('period_summaries', summary);
+    },
+
+    async getPeriodSummaries() {
+        const db = await getDB();
+        return db.getAll('period_summaries');
     },
 
     getDB,
