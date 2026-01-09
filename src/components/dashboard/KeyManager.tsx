@@ -34,22 +34,27 @@ export default function KeyManager() {
 
     // Calculate usage percentage for display
     function getUsageDisplay(apiKey: ApiKey) {
-        // Just show first actively used model or aggregate?
-        // Let's show gemma-3-27b usage as primary metric
-        const model = 'gemma-3-27b';
-        const usage = apiKey.usage[model];
-        const limit = MODEL_LIMITS[model];
-
-        if (!usage || !limit) return { rpm: 0, tpm: 0 };
-
-        // Check reset
+        const modelNames = Object.keys(MODEL_LIMITS);
         const now = Date.now();
-        if (now - usage.lastReset > 60000) return { rpm: 0, tpm: 0 };
 
-        return {
-            rpm: Math.round((usage.requests / limit.rpm) * 100),
-            tpm: Math.round((usage.tokens / limit.tpm) * 100)
-        };
+        const usageSnapshots = modelNames.map((model) => {
+            const usage = apiKey.usage[model];
+            const limit = MODEL_LIMITS[model as keyof typeof MODEL_LIMITS];
+            if (!usage || !limit) return { rpm: 0, tpm: 0 };
+            if (now - usage.lastReset > 60000) return { rpm: 0, tpm: 0 };
+            return {
+                rpm: Math.round((usage.requests / limit.rpm) * 100),
+                tpm: Math.round((usage.tokens / limit.tpm) * 100),
+            };
+        });
+
+        return usageSnapshots.reduce(
+            (max, current) => ({
+                rpm: Math.max(max.rpm, current.rpm),
+                tpm: Math.max(max.tpm, current.tpm),
+            }),
+            { rpm: 0, tpm: 0 }
+        );
     }
 
     async function handleBulkUpload(e: React.ChangeEvent<HTMLInputElement>) {
@@ -150,6 +155,10 @@ export default function KeyManager() {
                                         <span className="font-medium text-sm text-slate-200">{k.label}</span>
                                         <span className="text-xs text-slate-500 font-mono">...{k.key.slice(-4)}</span>
                                     </div>
+                                    <div className="text-[11px] text-slate-500 flex items-center gap-2 mb-2">
+                                        <RefreshCw className="w-3 h-3" />
+                                        <span>{k.lastUsedAt ? `Last used ${new Date(k.lastUsedAt).toLocaleTimeString()}` : 'Never used yet'}</span>
+                                    </div>
 
                                     {/* Usage Bars */}
                                     <div className="space-y-1">
@@ -177,7 +186,14 @@ export default function KeyManager() {
                                 </div>
 
                                 {/* Actions (Delete only for now, can add toggle active) */}
-                                <button className="text-slate-600 hover:text-red-400 p-2">
+                                <button
+                                    className="text-slate-600 hover:text-red-400 p-2"
+                                    onClick={async () => {
+                                        if (!confirm(`Remove API key "${k.label}"?`)) return;
+                                        await StorageService.removeApiKey(k.key);
+                                        loadKeys();
+                                    }}
+                                >
                                     <Trash2 className="w-4 h-4" />
                                 </button>
                             </div>
